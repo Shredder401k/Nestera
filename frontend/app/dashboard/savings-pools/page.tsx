@@ -1,6 +1,7 @@
 import React from "react";
 import { Landmark, Search, ChevronDown, LayoutGrid, List } from "lucide-react";
 import FeaturedGoalCard from "@/app/components/dashboard/FeaturedGoalCard";
+import GoalOverviewCard from "@/app/components/dashboard/GoalOverviewCard";
 
 export const metadata = { title: "Goal-Based Savings – Nestera" };
 
@@ -67,6 +68,20 @@ export default function GoalBasedSavingsPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Goal Overview Card */}
+      <div className="mb-10">
+        <GoalOverviewCard
+          title="Emergency Fund"
+          status="On Track"
+          description="Building a 6-month emergency safety net to cover unexpected expenses and provide financial security."
+          percentage={52}
+          savedAmount={5200}
+          targetAmount={10000}
+          monthlyContribution={400}
+          deadline="Sep 30, 2025"
+        />
       </div>
 
       {/* Featured Goal Card */}

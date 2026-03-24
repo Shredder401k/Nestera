@@ -22,6 +22,7 @@ import { AdminAnalyticsModule } from './modules/admin-analytics/admin-analytics.
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SavingsModule } from './modules/savings/savings.module';
 import { GovernanceModule } from './modules/governance/governance.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { TestRbacModule } from './test-rbac/test-rbac.module';
 import { TestThrottlingModule } from './test-throttling/test-throttling.module';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
@@ -86,6 +87,7 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
     AnalyticsModule,
     SavingsModule,
     GovernanceModule,
+    AnalyticsModule,
     TestRbacModule,
     TestThrottlingModule,
     ThrottlerModule.forRoot([
