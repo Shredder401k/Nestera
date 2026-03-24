@@ -14,6 +14,7 @@ import {
   ApiBody,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { SavingsService } from './savings.service';
 import { SavingsProduct } from './entities/savings-product.entity';
 import { UserSubscription } from './entities/user-subscription.entity';
@@ -59,11 +60,13 @@ export class SavingsController {
   }
 
   @Get('my-subscriptions')
+  @Throttle({ rpc: { limit: 10, ttl: 60000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user subscriptions' })
   @ApiResponse({ status: 200, description: 'List of user subscriptions' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   async getMySubscriptions(
     @CurrentUser() user: { id: string; email: string },
   ): Promise<UserSubscription[]> {
@@ -71,6 +74,7 @@ export class SavingsController {
   }
 
   @Get('my-goals')
+  @Throttle({ rpc: { limit: 10, ttl: 60000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
@@ -83,6 +87,7 @@ export class SavingsController {
       'List of savings goals with current balance and percentage completion',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   async getMyGoals(
     @CurrentUser() user: { id: string; email: string },
   ): Promise<SavingsGoalProgress[]> {
