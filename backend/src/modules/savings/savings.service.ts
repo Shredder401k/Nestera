@@ -18,22 +18,12 @@ import {
 import { SavingsGoal, SavingsGoalStatus } from './entities/savings-goal.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { GoalProgressDto } from './dto/goal-progress.dto';
 import { User } from '../user/entities/user.entity';
 import { SavingsService as BlockchainSavingsService } from '../blockchain/savings.service';
+import { PredictiveEvaluatorService } from './services/predictive-evaluator.service';
 
-export interface SavingsGoalProgress {
-  id: string;
-  userId: string;
-  goalName: string;
-  targetAmount: number;
-  targetDate: Date;
-  status: SavingsGoalStatus;
-  metadata: SavingsGoal['metadata'];
-  createdAt: Date;
-  updatedAt: Date;
-  currentBalance: number;
-  percentageComplete: number;
-}
+export interface SavingsGoalProgress extends GoalProgressDto { }
 
 export interface UserSubscriptionWithLiveBalance extends UserSubscription {
   indexedAmount: number;
@@ -60,9 +50,10 @@ export class SavingsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly blockchainSavingsService: BlockchainSavingsService,
+    private readonly predictiveEvaluatorService: PredictiveEvaluatorService,
     private readonly configService: ConfigService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
-  ) {}
+  ) { }
 
   async createProduct(dto: CreateProductDto): Promise<SavingsProduct> {
     if (dto.minAmount > dto.maxAmount) {
@@ -170,10 +161,10 @@ export class SavingsService {
       startDate: new Date(),
       endDate: product.tenureMonths
         ? (() => {
-            const d = new Date();
-            d.setMonth(d.getMonth() + product.tenureMonths);
-            return d;
-          })()
+          const d = new Date();
+          d.setMonth(d.getMonth() + product.tenureMonths);
+          return d;
+        })()
         : null,
     });
     return await this.subscriptionRepository.save(subscription);
@@ -255,7 +246,7 @@ export class SavingsService {
   }
 
   async findMyGoals(userId: string): Promise<SavingsGoalProgress[]> {
-    const [goals, user] = await Promise.all([
+    const [goals, user, subscriptions] = await Promise.all([
       this.goalRepository.find({
         where: { userId },
         order: { createdAt: 'DESC' },
@@ -263,6 +254,10 @@ export class SavingsService {
       this.userRepository.findOne({
         where: { id: userId },
         select: ['id', 'publicKey'],
+      }),
+      this.subscriptionRepository.find({
+        where: { userId },
+        relations: ['product'],
       }),
     ]);
 
@@ -272,14 +267,17 @@ export class SavingsService {
 
     const liveVaultBalanceStroops = user?.publicKey
       ? (
-          await this.blockchainSavingsService.getUserSavingsBalance(
-            user.publicKey,
-          )
-        ).total
+        await this.blockchainSavingsService.getUserSavingsBalance(
+          user.publicKey,
+        )
+      ).total
       : 0;
 
+    // Calculate average yield rate from active subscriptions
+    const averageYieldRate = this.calculateAverageYieldRate(subscriptions);
+
     return goals.map((goal) =>
-      this.mapGoalWithProgress(goal, liveVaultBalanceStroops),
+      this.mapGoalWithProgress(goal, liveVaultBalanceStroops, averageYieldRate),
     );
   }
 
@@ -343,12 +341,32 @@ export class SavingsService {
   private mapGoalWithProgress(
     goal: SavingsGoal,
     liveVaultBalanceStroops: number,
+    yieldRate: number = 0,
   ): SavingsGoalProgress {
     const targetAmount = Number(goal.targetAmount);
     const currentBalance = this.stroopsToDecimal(liveVaultBalanceStroops);
     const percentageComplete = this.calculatePercentageComplete(
       liveVaultBalanceStroops,
       targetAmount,
+    );
+
+    // Chronological Predictive Evaluator: Calculate projected balance at target date
+    const projectedBalance = this.predictiveEvaluatorService.calculateProjectedBalance(
+      currentBalance,
+      yieldRate,
+      goal.targetDate,
+    );
+
+    // Determine if user is off track
+    const isOffTrack = this.predictiveEvaluatorService.isOffTrack(
+      projectedBalance,
+      targetAmount,
+    );
+
+    // Calculate the gap between target and projected balance
+    const projectionGap = this.predictiveEvaluatorService.calculateProjectionGap(
+      targetAmount,
+      projectedBalance,
     );
 
     return {
@@ -363,6 +381,10 @@ export class SavingsService {
       updatedAt: goal.updatedAt,
       currentBalance,
       percentageComplete,
+      projectedBalance,
+      isOffTrack,
+      projectionGap,
+      appliedYieldRate: yieldRate,
     };
   }
 
@@ -430,5 +452,26 @@ export class SavingsService {
 
   private stroopsToDecimal(amountInStroops: number): number {
     return Number((amountInStroops / STROOPS_PER_XLM).toFixed(2));
+  }
+
+  private calculateAverageYieldRate(subscriptions: UserSubscription[]): number {
+    if (!subscriptions.length) {
+      return 0;
+    }
+
+    const activeSubscriptions = subscriptions.filter(
+      (sub) => sub.status === SubscriptionStatus.ACTIVE,
+    );
+
+    if (!activeSubscriptions.length) {
+      return 0;
+    }
+
+    const totalYield = activeSubscriptions.reduce((sum, sub) => {
+      const yieldRate = Number(sub.product?.interestRate || 0);
+      return sum + yieldRate;
+    }, 0);
+
+    return totalYield / activeSubscriptions.length;
   }
 }
