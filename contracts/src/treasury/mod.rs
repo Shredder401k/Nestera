@@ -1,5 +1,8 @@
 pub mod types;
 
+#[cfg(test)]
+mod views_tests;
+
 use crate::errors::SavingsError;
 use crate::storage_types::DataKey;
 use soroban_sdk::{symbol_short, Address, Env};
@@ -67,6 +70,28 @@ pub fn record_yield(env: &Env, amount: i128) {
         .checked_add(amount)
         .unwrap_or(treasury.total_yield_earned);
     set_treasury(env, &treasury);
+}
+
+// ========== Read-Only Treasury Views ==========
+
+/// Returns only the unallocated treasury balance (fees awaiting allocation).
+pub fn get_treasury_balance(env: &Env) -> i128 {
+    get_treasury(env).treasury_balance
+}
+
+/// Returns the cumulative total of all protocol fees collected.
+pub fn get_total_fees(env: &Env) -> i128 {
+    get_treasury(env).total_fees_collected
+}
+
+/// Returns the cumulative total of all yield credited to users.
+pub fn get_total_yield(env: &Env) -> i128 {
+    get_treasury(env).total_yield_earned
+}
+
+/// Returns the current reserve sub-balance (allocated funds held as reserve).
+pub fn get_reserve_balance(env: &Env) -> i128 {
+    get_treasury(env).reserve_balance
 }
 
 // ========== Allocation Logic ==========

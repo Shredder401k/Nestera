@@ -997,6 +997,26 @@ impl NesteraContract {
         treasury::get_treasury(&env)
     }
 
+    /// Returns the unallocated treasury balance (fees pending allocation).
+    pub fn get_treasury_balance(env: Env) -> i128 {
+        treasury::get_treasury_balance(&env)
+    }
+
+    /// Returns the cumulative total of all protocol fees collected.
+    pub fn get_total_fees(env: Env) -> i128 {
+        treasury::get_total_fees(&env)
+    }
+
+    /// Returns the cumulative total of all yield credited to users.
+    pub fn get_total_yield(env: Env) -> i128 {
+        treasury::get_total_yield(&env)
+    }
+
+    /// Returns the current reserve sub-balance (allocated reserve funds).
+    pub fn get_reserve_balance(env: Env) -> i128 {
+        treasury::get_reserve_balance(&env)
+    }
+
     /// Allocates the unallocated treasury balance into reserves, rewards, and operations.
     /// Percentages are in basis points and must sum to 10_000.
     pub fn allocate_treasury(
