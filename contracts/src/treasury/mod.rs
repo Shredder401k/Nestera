@@ -1,18 +1,25 @@
 pub mod types;
 
 #[cfg(test)]
+mod event_tests;
+#[cfg(test)]
 mod security_tests;
 #[cfg(test)]
 mod views_tests;
 
 use crate::errors::SavingsError;
 use crate::storage_types::DataKey;
-use soroban_sdk::{symbol_short, Address, Env};
+use soroban_sdk::{symbol_short, Address, Env, Symbol};
 use types::{
     AllocationConfig, Treasury, TreasuryDailyWithdrawal, TreasuryPool, TreasurySecurityConfig,
 };
 
 const TREASURY_DAILY_WINDOW_SECS: u64 = 24 * 60 * 60;
+const EVENT_FEE_COLLECTED: &str = "FeeCollected";
+const EVENT_TREASURY_ALLOCATED: &str = "TreasuryAllocated";
+const EVENT_TREASURY_WITHDRAWN: &str = "TreasuryWithdrawn";
+const EVENT_RESERVE_USED: &str = "ReserveUsed";
+const EVENT_YIELD_DISTRIBUTED: &str = "YieldDistributed";
 
 // ========== Treasury Storage Helpers ==========
 
@@ -82,6 +89,14 @@ fn set_daily_withdrawal_tracker(env: &Env, tracker: &TreasuryDailyWithdrawal) {
         .set(&DataKey::TreasuryDailyWithdrawal, tracker);
 }
 
+fn pool_to_symbol(env: &Env, pool: &TreasuryPool) -> Symbol {
+    match pool {
+        TreasuryPool::Reserve => Symbol::new(env, "reserve"),
+        TreasuryPool::Rewards => Symbol::new(env, "rewards"),
+        TreasuryPool::Operations => Symbol::new(env, "operations"),
+    }
+}
+
 // ========== Treasury Initialization ==========
 
 /// Initializes the treasury with default zero values.
@@ -122,7 +137,9 @@ pub fn record_fee(env: &Env, amount: i128, fee_type: soroban_sdk::Symbol) {
     set_treasury(env, &treasury);
 
     env.events()
-        .publish((symbol_short!("fee_col"), fee_type), amount);
+        .publish((symbol_short!("fee_col"), fee_type.clone()), amount);
+    env.events()
+        .publish((Symbol::new(env, EVENT_FEE_COLLECTED), fee_type), amount);
 }
 
 /// Records yield earned into the treasury.
@@ -140,6 +157,10 @@ pub fn record_yield(env: &Env, amount: i128) {
         return;
     }
     set_treasury(env, &treasury);
+    env.events().publish(
+        (Symbol::new(env, EVENT_YIELD_DISTRIBUTED),),
+        (amount, treasury.total_yield_earned),
+    );
 }
 
 // ========== Read-Only Treasury Views ==========
@@ -264,8 +285,25 @@ pub fn withdraw_treasury(
     daily.withdrawn_amount = new_daily_total;
     set_treasury(env, &treasury);
     set_daily_withdrawal_tracker(env, &daily);
-    env.events()
-        .publish((symbol_short!("trs_wth"),), (pool, amount, new_daily_total));
+    let pool_symbol = pool_to_symbol(env, &pool);
+    env.events().publish(
+        (
+            Symbol::new(env, EVENT_TREASURY_WITHDRAWN),
+            admin.clone(),
+            pool_symbol,
+        ),
+        (amount, new_daily_total),
+    );
+    env.events().publish(
+        (symbol_short!("trs_wth"),),
+        (pool.clone(), amount, new_daily_total),
+    );
+    if pool == TreasuryPool::Reserve {
+        env.events().publish(
+            (Symbol::new(env, EVENT_RESERVE_USED), admin.clone()),
+            (amount, treasury.reserve_balance),
+        );
+    }
 
     Ok(treasury)
 }
@@ -361,6 +399,17 @@ pub fn allocate_treasury(
     env.events().publish(
         (symbol_short!("alloc"),),
         (reserve_amount, rewards_amount, operations_amount),
+    );
+    env.events().publish(
+        (Symbol::new(env, EVENT_TREASURY_ALLOCATED), admin.clone()),
+        (
+            reserve_amount,
+            rewards_amount,
+            operations_amount,
+            reserve_percent,
+            rewards_percent,
+            operations_percent,
+        ),
     );
 
     Ok(treasury)
