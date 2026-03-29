@@ -32,9 +32,11 @@ import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { SavingsProductDto } from './dto/savings-product.dto';
 import { ProductDetailsDto } from './dto/product-details.dto';
+import { RecommendationResponseDto } from './dto/recommendation-response.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RpcThrottleGuard } from '../../common/guards/rpc-throttle.guard';
+import { RecommendationService } from './services/recommendation.service';
 import {
   SavingsGoalProgress,
   UserSubscriptionWithLiveBalance,
@@ -43,7 +45,10 @@ import {
 @ApiTags('savings')
 @Controller('savings')
 export class SavingsController {
-  constructor(private readonly savingsService: SavingsService) {}
+  constructor(
+    private readonly savingsService: SavingsService,
+    private readonly recommendationService: RecommendationService,
+  ) {}
 
   @Get('products')
   @UseInterceptors(CacheInterceptor)
@@ -137,6 +142,28 @@ export class SavingsController {
       dto.productId,
       dto.amount,
     );
+  }
+
+  @Get('recommendations')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get personalized savings product recommendations',
+    description:
+      'Returns product recommendations based on transaction history, risk profile, savings goals, and portfolio diversification',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of recommended products',
+    type: RecommendationResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getRecommendations(
+    @CurrentUser() user: { id: string; email: string },
+  ): Promise<RecommendationResponseDto> {
+    const recommendations =
+      await this.recommendationService.getRecommendations(user.id);
+    return { recommendations };
   }
 
   @Get('my-subscriptions')
