@@ -32,6 +32,7 @@ export interface UserSubscriptionWithLiveBalance extends UserSubscription {
   liveBalanceStroops: number;
   balanceSource: 'rpc' | 'cache';
   vaultContractId: string | null;
+  estimatedYieldPerSecond: number;
 }
 
 const STROOPS_PER_XLM = 10_000_000;
@@ -451,6 +452,10 @@ export class SavingsService {
     balanceSource: 'rpc' | 'cache',
     vaultContractId: string | null,
   ): UserSubscriptionWithLiveBalance {
+    const annualRate = Number(subscription.product?.interestRate ?? 0) / 100;
+    const estimatedYieldPerSecond = parseFloat(
+      ((liveBalance * annualRate) / (365 * 24 * 3600)).toFixed(10),
+    );
     return {
       ...subscription,
       indexedAmount: Number(subscription.amount),
@@ -458,6 +463,7 @@ export class SavingsService {
       liveBalanceStroops,
       balanceSource,
       vaultContractId,
+      estimatedYieldPerSecond,
     };
   }
 

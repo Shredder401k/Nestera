@@ -228,6 +228,7 @@ describe('SavingsService', () => {
         userId: 'user-1',
         productId: 'product-1',
         amount: 12.5,
+        product: { interestRate: 10 },
         createdAt: new Date('2026-01-01'),
       },
     ]);
@@ -246,6 +247,8 @@ describe('SavingsService', () => {
         balanceSource: 'rpc',
         vaultContractId:
           'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M',
+        // 2.5 * 0.10 / (365 * 24 * 3600) ≈ 0.0000000079
+        estimatedYieldPerSecond: expect.any(Number),
       }),
     ]);
     expect(blockchainSavingsService.getUserVaultBalance).toHaveBeenCalledWith(
@@ -261,6 +264,7 @@ describe('SavingsService', () => {
         userId: 'user-1',
         productId: 'product-1',
         amount: 8.75,
+        product: { interestRate: 5 },
         createdAt: new Date('2026-01-01'),
       },
     ]);
@@ -275,6 +279,7 @@ describe('SavingsService', () => {
         liveBalance: 8.75,
         balanceSource: 'cache',
         vaultContractId: null,
+        estimatedYieldPerSecond: expect.any(Number),
       }),
     ]);
     expect(blockchainSavingsService.getUserVaultBalance).not.toHaveBeenCalled();
