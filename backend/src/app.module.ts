@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { CorrelationIdInterceptor } from './common/interceptors/correlation-id.interceptor';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
+import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor';
 import { TieredThrottlerGuard } from './common/guards/tiered-throttler.guard';
 import { CommonModule } from './common/common.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -37,6 +38,10 @@ import { TestRbacModule } from './test-rbac/test-rbac.module';
 import { TestThrottlingModule } from './test-throttling/test-throttling.module';
 import { ApiVersioningModule } from './common/versioning/api-versioning.module';
 import { BackupModule } from './modules/backup/backup.module';
+import { ConnectionPoolModule } from './common/database/connection-pool.module';
+import { CircuitBreakerModule } from './common/circuit-breaker/circuit-breaker.module';
+import { PostmanModule } from './common/postman/postman.module';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 
 const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').required(),
@@ -190,6 +195,9 @@ const envValidationSchema = Joi.object({
     TestThrottlingModule,
     ApiVersioningModule,
     BackupModule,
+    ConnectionPoolModule,
+    CircuitBreakerModule,
+    PostmanModule,
     CommonModule,
     ThrottlerModule.forRoot([
       {
@@ -218,6 +226,10 @@ const envValidationSchema = Joi.object({
     },
     {
       provide: APP_INTERCEPTOR,
+      useClass: RequestLoggingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
       useClass: CorrelationIdInterceptor,
     },
     {
@@ -226,4 +238,8 @@ const envValidationSchema = Joi.object({
     },
   ],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}

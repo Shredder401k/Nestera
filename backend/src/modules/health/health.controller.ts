@@ -4,6 +4,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { TypeOrmHealthIndicator } from './indicators/typeorm.health';
 import { IndexerHealthIndicator } from './indicators/indexer.health';
 import { RpcHealthIndicator } from './indicators/rpc.health';
+import { ConnectionPoolHealthIndicator } from './indicators/connection-pool.health';
 
 @ApiTags('Health')
 @Controller('health')
@@ -13,6 +14,7 @@ export class HealthController {
     private readonly db: TypeOrmHealthIndicator,
     private readonly indexer: IndexerHealthIndicator,
     private readonly rpc: RpcHealthIndicator,
+    private readonly connectionPool: ConnectionPoolHealthIndicator,
   ) {}
 
   @Get()
@@ -21,7 +23,7 @@ export class HealthController {
   @ApiOperation({
     summary: 'Full application health check',
     description:
-      'Comprehensive health check including database, RPC endpoints, and indexer service',
+      'Comprehensive health check including database, RPC endpoints, indexer service, and connection pool',
   })
   @ApiResponse({
     status: 200,
@@ -34,6 +36,14 @@ export class HealthController {
             status: 'up',
             responseTime: '45ms',
             threshold: '200ms',
+          },
+          database_pool: {
+            status: 'up',
+            metrics: {
+              activeConnections: 5,
+              idleConnections: 15,
+              utilizationPercentage: 25,
+            },
           },
           rpc: {
             status: 'up',
@@ -69,6 +79,7 @@ export class HealthController {
   async check() {
     return this.health.check([
       () => this.db.isHealthy('database'),
+      () => this.connectionPool.isHealthy(),
       () => this.rpc.isHealthy('rpc'),
       () => this.indexer.isHealthy('indexer'),
     ]);
@@ -111,6 +122,7 @@ export class HealthController {
   async ready() {
     return this.health.check([
       () => this.db.isHealthy('database'),
+      () => this.connectionPool.isHealthy(),
       () => this.rpc.isHealthy('rpc'),
     ]);
   }

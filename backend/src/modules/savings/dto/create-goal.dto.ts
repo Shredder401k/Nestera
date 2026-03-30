@@ -9,7 +9,7 @@ import {
   IsNotEmpty,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiExample } from '@nestjs/swagger';
 import { SavingsGoalMetadata } from '../entities/savings-goal.entity';
 import { IsFutureDate } from '../../../common/validators/is-future-date.validator';
 
@@ -67,3 +67,17 @@ export class CreateGoalDto {
   @IsObject({ message: 'Metadata must be a valid object' })
   metadata?: SavingsGoalMetadata;
 }
+
+/**
+ * @example
+ * {
+ *   "goalName": "Emergency Fund",
+ *   "targetAmount": 10000,
+ *   "targetDate": "2026-12-31T00:00:00.000Z",
+ *   "metadata": {
+ *     "imageUrl": "https://cdn.nestera.io/goals/emergency.jpg",
+ *     "iconRef": "shield-icon",
+ *     "color": "#EF4444"
+ *   }
+ * }
+ */
