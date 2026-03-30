@@ -460,6 +460,7 @@ export class SavingsService {
         `This savings product is at capacity. You have been added to the waitlist at position ${position}.`,
       );
     }
+    }
 
     const subscription = this.subscriptionRepository.create({
       userId,
@@ -477,6 +478,9 @@ export class SavingsService {
     });
     const savedSubscription =
       await this.subscriptionRepository.save(subscription);
+
+    // Record waitlist conversion if the user was on the waitlist
+    await this.waitlistService.recordConversion(userId, product.id);
 
     return savedSubscription;
   }
@@ -1312,6 +1316,8 @@ export class SavingsService {
         metadata: options.metadata ?? null,
       }),
     );
+  }
+
   private async syncCapacityState(
     product: SavingsProduct,
   ): Promise<SavingsProduct> {
