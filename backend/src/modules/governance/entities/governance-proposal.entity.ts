@@ -31,10 +31,10 @@ export class GovernanceProposal {
   @Column({ type: 'int', unique: true })
   onChainId: number;
 
-  @Column()
+  @Column({ type: 'varchar', length: 500 })
   title: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'text' })
   description: string;
 
   @Column({

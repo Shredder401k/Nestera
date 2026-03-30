@@ -1,8 +1,22 @@
-import { IsString, IsOptional, IsUUID, IsEnum, IsNumber, Min } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsEnum, IsNumber, Min, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ReferralStatus } from '../entities/referral.entity';
 
 export class CreateReferralDto {
+  @ApiPropertyOptional({ description: 'Campaign ID to associate with this referral' })
+  @IsOptional()
+  @IsUUID()
+  campaignId?: string;
+}
+
+export class GenerateCustomCodeDto {
+  @ApiPropertyOptional({ description: 'Custom referral code (alphanumeric, 4-12 chars). Auto-generated if omitted.' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z0-9]{4,12}$/, { message: 'Code must be 4-12 uppercase alphanumeric characters' })
+  @MaxLength(12)
+  code?: string;
+
   @ApiPropertyOptional({ description: 'Campaign ID to associate with this referral' })
   @IsOptional()
   @IsUUID()
@@ -17,22 +31,22 @@ export class ApplyReferralCodeDto {
 
 export class ReferralStatsDto {
   @ApiProperty()
+  referralCode: string;
+
+  @ApiProperty()
   totalReferrals: number;
 
   @ApiProperty()
-  pendingReferrals: number;
+  successfulReferrals: number;
 
   @ApiProperty()
-  completedReferrals: number;
+  pendingRewards: number;
 
   @ApiProperty()
-  rewardedReferrals: number;
+  claimedRewards: number;
 
   @ApiProperty()
-  totalRewardsEarned: string;
-
-  @ApiProperty()
-  referralCode: string;
+  rank: number | null;
 }
 
 export class ReferralResponseDto {

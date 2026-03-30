@@ -9,6 +9,7 @@ import { ReferralsService } from './referrals.service';
 import { CampaignsService } from './campaigns.service';
 import { ReferralsController } from './referrals.controller';
 import { AdminReferralsController } from './admin-referrals.controller';
+import { UserReferralsController } from './user-referrals.controller';
 import { ReferralEventsListener } from './referral-events.listener';
 
 @Module({
@@ -21,7 +22,7 @@ import { ReferralEventsListener } from './referral-events.listener';
       Notification,
     ]),
   ],
-  controllers: [ReferralsController, AdminReferralsController],
+  controllers: [ReferralsController, AdminReferralsController, UserReferralsController],
   providers: [ReferralsService, CampaignsService, ReferralEventsListener],
   exports: [ReferralsService, CampaignsService],
 })

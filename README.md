@@ -348,41 +348,8 @@ rustup target add wasm32-unknown-unknown
 
 ## 🤝 Contributing
 
-We welcome contributions from the community! Here's how you can help:
+See our detailed [CONTRIBUTING.md](CONTRIBUTING.md) for coding standards (Rust/Soroban, TypeScript), Git workflow, naming conventions, and full PR process.
 
-### Getting Started
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Follow the setup instructions above
-4. Make your changes
-5. Write/update tests
-6. Ensure all tests pass (`npm test` in relevant directory)
-7. Commit your changes (`git commit -m 'Add amazing feature'`)
-8. Push to your branch (`git push origin feature/amazing-feature`)
-9. Open a Pull Request
-
-### Coding Standards
-
-- **Rust (Contracts):** Follow Rust standard formatting (`cargo fmt`)
-- **TypeScript (Frontend/Backend):** Use ESLint and Prettier configs provided
-- **Commits:** Use conventional commits (e.g., `feat:`, `fix:`, `docs:`)
-- **Tests:** Write tests for new features and bug fixes
-
-### Pull Request Guidelines
-
-- Provide clear description of changes
-- Reference any related issues
-- Ensure CI checks pass
-- Update documentation if needed
-- Add screenshots for UI changes
-
-### Communication
-
-- **GitHub Issues:** Bug reports and feature requests
-- **GitHub Discussions:** Questions and general discussion
-- **Discord:** [Join our Telegram](@h2YC0g3Xx_Y5OGZk)
-- **Email:** dev@nestera.io _(if available)_
 
 ---
 

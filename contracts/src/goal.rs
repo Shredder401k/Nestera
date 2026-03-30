@@ -94,6 +94,20 @@ pub fn create_goal_save(
     add_goal_to_user(env, &user, goal_id);
     increment_next_goal_id(env);
 
+    // Update user's total balance
+    let user_key = DataKey::User(user.clone());
+    if let Some(mut user_data) = env.storage().persistent().get::<DataKey, User>(&user_key) {
+        user_data.total_balance = user_data
+            .total_balance
+            .checked_add(net_initial_deposit)
+            .ok_or(SavingsError::Overflow)?;
+        user_data.savings_count = user_data
+            .savings_count
+            .checked_add(1)
+            .ok_or(SavingsError::Overflow)?;
+        env.storage().persistent().set(&user_key, &user_data);
+    }
+
     // Award deposit points
     storage::award_deposit_points(env, user.clone(), initial_deposit)?;
 
@@ -152,6 +166,16 @@ pub fn deposit_to_goal_save(
     env.storage()
         .persistent()
         .set(&DataKey::GoalSave(goal_id), &goal_save);
+
+    // Update user's total balance
+    let user_key = DataKey::User(user.clone());
+    if let Some(mut user_data) = env.storage().persistent().get::<DataKey, User>(&user_key) {
+        user_data.total_balance = user_data
+            .total_balance
+            .checked_add(net_amount)
+            .ok_or(SavingsError::Overflow)?;
+        env.storage().persistent().set(&user_key, &user_data);
+    }
 
     if !was_completed && goal_save.is_completed {
         storage::award_goal_completion_bonus(env, user.clone())?;
@@ -240,8 +264,8 @@ pub fn withdraw_completed_goal_save(
     if let Some(mut user_data) = env.storage().persistent().get::<DataKey, User>(&user_key) {
         user_data.total_balance = user_data
             .total_balance
-            .checked_add(net_amount)
-            .ok_or(SavingsError::Overflow)?;
+            .checked_sub(goal_save.current_amount)
+            .ok_or(SavingsError::Underflow)?;
         env.storage().persistent().set(&user_key, &user_data);
     }
 
@@ -335,8 +359,8 @@ pub fn break_goal_save(env: &Env, user: Address, goal_id: u64) -> Result<i128, S
     if let Some(mut user_data) = env.storage().persistent().get::<DataKey, User>(&user_key) {
         user_data.total_balance = user_data
             .total_balance
-            .checked_add(net_amount)
-            .ok_or(SavingsError::Overflow)?;
+            .checked_sub(goal_save.current_amount)
+            .ok_or(SavingsError::Underflow)?;
         env.storage().persistent().set(&user_key, &user_data);
     }
 

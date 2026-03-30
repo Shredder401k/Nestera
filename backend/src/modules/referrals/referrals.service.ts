@@ -229,32 +229,41 @@ export class ReferralsService {
   }
 
   /**
-   * Get referral statistics for a user
+   * Get referral statistics for a user (dashboard format per issue #528)
    */
   async getReferralStats(userId: string) {
     const referrals = await this.referralRepository.find({
       where: { referrerId: userId },
     });
 
-    const userReferral = referrals[0]; // Get user's referral code
+    const userReferral = referrals[0];
 
-    const stats = {
-      totalReferrals: referrals.length,
-      pendingReferrals: referrals.filter((r) => r.status === ReferralStatus.PENDING).length,
-      completedReferrals: referrals.filter((r) => r.status === ReferralStatus.COMPLETED).length,
-      rewardedReferrals: referrals.filter((r) => r.status === ReferralStatus.REWARDED).length,
-      totalRewardsEarned: referrals
-        .filter((r) => r.status === ReferralStatus.REWARDED && r.rewardAmount)
-        .reduce((sum, r) => sum + parseFloat(r.rewardAmount!), 0)
-        .toFixed(7),
+    const successfulReferrals = referrals.filter(
+      (r) => r.status === ReferralStatus.COMPLETED || r.status === ReferralStatus.REWARDED,
+    );
+
+    const pendingRewards = referrals
+      .filter((r) => r.status === ReferralStatus.COMPLETED && r.rewardAmount)
+      .reduce((sum, r) => sum + parseFloat(r.rewardAmount!), 0);
+
+    const claimedRewards = referrals
+      .filter((r) => r.status === ReferralStatus.REWARDED && r.rewardAmount)
+      .reduce((sum, r) => sum + parseFloat(r.rewardAmount!), 0);
+
+    const rank = await this.getReferrerRank(userId);
+
+    return {
       referralCode: userReferral?.referralCode || null,
+      totalReferrals: referrals.length,
+      successfulReferrals: successfulReferrals.length,
+      pendingRewards: parseFloat(pendingRewards.toFixed(2)),
+      claimedRewards: parseFloat(claimedRewards.toFixed(2)),
+      rank,
     };
-
-    return stats;
   }
 
   /**
-   * Get detailed referral list for a user
+   * Get detailed referral list for a user (history with conversion funnel)
    */
   async getUserReferrals(userId: string) {
     return this.referralRepository.find({
@@ -262,6 +271,76 @@ export class ReferralsService {
       relations: ['referee'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  /**
+   * Generate a custom referral code for a user (issue #528)
+   */
+  async generateCustomCode(userId: string, code?: string, campaignId?: string): Promise<Referral> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (code) {
+      const taken = await this.referralRepository.findOne({ where: { referralCode: code } });
+      if (taken) {
+        if (taken.referrerId === userId) return taken; // idempotent
+        throw new ConflictException('Referral code already taken');
+      }
+    } else {
+      code = await this.generateUniqueCode();
+    }
+
+    if (campaignId) {
+      const campaign = await this.campaignRepository.findOne({ where: { id: campaignId } });
+      if (!campaign || !campaign.isActive) {
+        throw new BadRequestException('Invalid or inactive campaign');
+      }
+    }
+
+    const referral = this.referralRepository.create({
+      referrerId: userId,
+      referralCode: code,
+      campaignId: campaignId || null,
+      status: ReferralStatus.PENDING,
+    });
+    return this.referralRepository.save(referral);
+  }
+
+  /**
+   * Get leaderboard of top referrers (issue #528)
+   */
+  async getLeaderboard(limit = 10): Promise<Array<{ rank: number; userId: string; successfulReferrals: number; totalRewards: number }>> {
+    const rows = await this.referralRepository
+      .createQueryBuilder('r')
+      .select('r.referrerId', 'userId')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE r.status IN ('${ReferralStatus.COMPLETED}','${ReferralStatus.REWARDED}'))`,
+        'successfulReferrals',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN r.status = '${ReferralStatus.REWARDED}' THEN CAST(r.rewardAmount AS DECIMAL) ELSE 0 END), 0)`,
+        'totalRewards',
+      )
+      .groupBy('r.referrerId')
+      .orderBy('"successfulReferrals"', 'DESC')
+      .limit(limit)
+      .getRawMany();
+
+    return rows.map((row, index) => ({
+      rank: index + 1,
+      userId: row.userId,
+      successfulReferrals: parseInt(row.successfulReferrals, 10),
+      totalRewards: parseFloat(parseFloat(row.totalRewards).toFixed(2)),
+    }));
+  }
+
+  /**
+   * Get the rank of a specific referrer
+   */
+  private async getReferrerRank(userId: string): Promise<number | null> {
+    const leaderboard = await this.getLeaderboard(1000);
+    const entry = leaderboard.find((e) => e.userId === userId);
+    return entry ? entry.rank : null;
   }
 
   /**

@@ -452,6 +452,16 @@ pub fn contribute_to_group_save(
         env.storage().persistent().set(&plan_key, &plan);
     }
 
+    // Update user's total balance
+    let user_key = DataKey::User(user.clone());
+    if let Some(mut user_data) = env.storage().persistent().get::<DataKey, crate::storage_types::User>(&user_key) {
+        user_data.total_balance = user_data
+            .total_balance
+            .checked_add(amount)
+            .ok_or(SavingsError::Overflow)?;
+        env.storage().persistent().set(&user_key, &user_data);
+    }
+
     // Award deposit points
     crate::rewards::storage::award_deposit_points(env, user.clone(), amount)?;
 
@@ -630,6 +640,16 @@ pub fn break_group_save(env: &Env, user: Address, group_id: u64) -> Result<(), S
 
     // Save updated group
     env.storage().persistent().set(&group_key, &group);
+
+    // Update user's total balance
+    let user_key = DataKey::User(user.clone());
+    if let Some(mut user_data) = env.storage().persistent().get::<DataKey, crate::storage_types::User>(&user_key) {
+        user_data.total_balance = user_data
+            .total_balance
+            .checked_sub(user_contribution)
+            .ok_or(SavingsError::Underflow)?;
+        env.storage().persistent().set(&user_key, &user_data);
+    }
 
     // Remove user's contribution entry
     env.storage().persistent().remove(&contribution_key);

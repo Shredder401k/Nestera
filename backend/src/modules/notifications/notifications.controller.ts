@@ -66,7 +66,7 @@ export class NotificationsController {
   }
 
   @Patch('preferences')
-  @ApiOperation({ summary: 'Update notification preferences' })
+  @ApiOperation({ summary: 'Update notification preferences (channels, types, quiet hours, digest)' })
   async updatePreferences(
     @CurrentUser() user: User,
     @Body() updateDto: UpdateNotificationPreferenceDto,

@@ -137,6 +137,20 @@ mod governance_tests {
     }
 
     #[test]
+    fn test_voting_power_decreases_after_withdraw() {
+        let (env, client, _) = setup_contract();
+        let user = Address::generate(&env);
+        env.mock_all_auths();
+
+        client.initialize_user(&user);
+        client.deposit_flexi(&user, &2000);
+        assert_eq!(client.get_voting_power(&user), 2000);
+
+        client.withdraw_flexi(&user, &500);
+        assert_eq!(client.get_voting_power(&user), 1500);
+    }
+
+    #[test]
     fn test_init_voting_config() {
         let (env, client, admin) = setup_contract();
         env.mock_all_auths();
