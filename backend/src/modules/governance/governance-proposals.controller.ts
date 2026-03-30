@@ -1,13 +1,19 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   DefaultValuePipe,
   Get,
   Param,
   ParseIntPipe,
+  Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CastVoteDto } from './dto/cast-vote.dto';
 import { ProposalListItemDto } from './dto/proposal-list-item.dto';
 import { ProposalVotesResponseDto } from './dto/proposal-votes-response.dto';
 import { ProposalStatus } from './entities/governance-proposal.entity';
@@ -64,6 +70,31 @@ export class GovernanceProposalsController {
     return this.governanceService.getProposals(status);
   }
 
+  @Post(':id/vote')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cast a vote on an active proposal',
+    description: 'Allows a user to cast a weighted vote (for/against/abstain) on an active proposal. Voting power is calculated based on lifetime deposits.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Vote cast successfully, returns transaction receipt',
+    schema: {
+      type: 'object',
+      properties: {
+        transactionHash: { type: 'string' },
+      },
+    },
+  })
+  castVote(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() castVoteDto: CastVoteDto,
+    @CurrentUser() user: { id: string },
+  ): Promise<{ transactionHash: string }> {
+    return this.governanceService.castVote(user.id, id, castVoteDto.direction);
+  }
+
   @Get(':id/votes')
   @ApiOperation({
     summary: 'Get proposal vote tally and recent voters',
@@ -88,3 +119,4 @@ export class GovernanceProposalsController {
     return this.governanceService.getProposalVotesByOnChainId(id, page);
   }
 }
+
