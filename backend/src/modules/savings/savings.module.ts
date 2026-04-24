@@ -24,6 +24,8 @@ import { SavingsGroupMember } from './entities/savings-group-member.entity';
 import { SavingsGroupActivity } from './entities/savings-group-activity.entity';
 import { GroupSavingsService } from './group-savings.service';
 import { GroupSavingsController } from './group-savings.controller';
+import { AutoDepositSchedule } from './entities/auto-deposit-schedule.entity';
+import { AutoDepositService } from './services/auto-deposit.service';
 
 @Module({
   imports: [
@@ -43,15 +45,18 @@ import { GroupSavingsController } from './group-savings.controller';
       SavingsGroup,
       SavingsGroupMember,
       SavingsGroupActivity,
+      AutoDepositSchedule,
     ]),
   ],
   controllers: [SavingsController, WaitlistController, GroupSavingsController],
   providers: [
     SavingsService,
     PredictiveEvaluatorService,
+    RecommendationService,
     WaitlistService,
     ExperimentsService,
     GroupSavingsService,
+    AutoDepositService,
   ],
   exports: [SavingsService, WaitlistService, ExperimentsService],
 })

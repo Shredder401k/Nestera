@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -19,6 +19,8 @@ import { GovernanceService } from './governance.service';
 export class GovernanceController {
   constructor(private readonly governanceService: GovernanceService) {}
 
+  // ── Legacy delegation lookup (kept for backwards compat) ──────────────────
+
   @Get('delegation')
   @ApiOperation({
     summary: 'Get the authenticated user delegation target',
@@ -34,28 +36,6 @@ export class GovernanceController {
     @CurrentUser() user: { id: string },
   ): Promise<DelegationResponseDto> {
     return this.governanceService.getUserDelegation(user.id);
-  }
-
-  @Post('delegation')
-  @ApiOperation({
-    summary: 'Delegate voting power to another address',
-    description: 'Updates the Soroban governance contract to delegate the user\'s voting power to another Stellar address.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Delegation updated successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        transactionHash: { type: 'string' },
-      },
-    },
-  })
-  delegate(
-    @CurrentUser() user: { id: string },
-    @Body() delegateVoteDto: DelegateVoteDto,
-  ): Promise<{ transactionHash: string }> {
-    return this.governanceService.delegateVotingPower(user.id, delegateVoteDto.delegateAddress);
   }
 
   @Get('voting-power')
@@ -74,5 +54,66 @@ export class GovernanceController {
   ): Promise<VotingPowerResponseDto> {
     return this.governanceService.getUserVotingPower(user.id);
   }
-}
 
+  // ── Delegation (#542) ──────────────────────────────────────────────────────
+
+  @Post('governance/delegate')
+  @ApiOperation({ summary: 'Delegate voting power to a trusted address' })
+  @ApiResponse({
+    status: 201,
+    description: 'Delegation set',
+    schema: { type: 'object', properties: { transactionHash: { type: 'string' } } },
+  })
+  @ApiResponse({ status: 400, description: 'Loop detected or invalid address' })
+  delegate(
+    @CurrentUser() user: { id: string },
+    @Body() dto: DelegateVoteDto,
+  ): Promise<{ transactionHash: string }> {
+    return this.governanceService.delegate(user.id, dto.delegateAddress);
+  }
+
+  @Delete('governance/delegate')
+  @ApiOperation({ summary: 'Revoke current voting power delegation' })
+  @ApiResponse({ status: 200, description: 'Delegation revoked' })
+  revokeDelegate(@CurrentUser() user: { id: string }): Promise<void> {
+    return this.governanceService.revokeDelegate(user.id);
+  }
+
+  @Get('governance/delegation')
+  @ApiOperation({ summary: 'View current delegation and total delegated power' })
+  @ApiResponse({
+    status: 200,
+    description: 'Delegation info',
+    schema: {
+      type: 'object',
+      properties: {
+        delegate: { type: 'string', nullable: true },
+        totalDelegatedPower: { type: 'number' },
+      },
+    },
+  })
+  getMyDelegation(
+    @CurrentUser() user: { id: string },
+  ): Promise<{ delegate: string | null; totalDelegatedPower: number }> {
+    return this.governanceService.getMyDelegation(user.id);
+  }
+
+  @Get('governance/delegators')
+  @ApiOperation({ summary: 'See who has delegated their voting power to you' })
+  @ApiResponse({
+    status: 200,
+    description: 'Delegators list',
+    schema: {
+      type: 'object',
+      properties: {
+        delegators: { type: 'array', items: { type: 'string' } },
+        totalDelegatedPower: { type: 'number' },
+      },
+    },
+  })
+  getMyDelegators(
+    @CurrentUser() user: { id: string },
+  ): Promise<{ delegators: string[]; totalDelegatedPower: number }> {
+    return this.governanceService.getMyDelegators(user.id);
+  }
+}

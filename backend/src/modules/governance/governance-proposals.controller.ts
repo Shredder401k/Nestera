@@ -13,6 +13,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiQuery,
   ApiResponse,
   ApiTags,
@@ -169,4 +170,63 @@ export class GovernanceProposalsController {
   ): Promise<ProposalVotesResponseDto> {
     return this.governanceService.getProposalVotesByOnChainId(id, page);
   }
+
+  // ── Lifecycle endpoints (#541) ─────────────────────────────────────────────
+
+  @Get(':id/status')
+  @ApiOperation({ summary: 'Get current proposal lifecycle state' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid', description: 'Proposal UUID' })
+  @ApiResponse({ status: 200, description: 'Proposal status', schema: { type: 'object', properties: { status: { type: 'string' }, timelockEndsAt: { type: 'string', nullable: true }, executedAt: { type: 'string', nullable: true } } } })
+  @ApiResponse({ status: 404, description: 'Proposal not found' })
+  getProposalStatus(
+    @Param('id') id: string,
+  ): Promise<{ status: ProposalStatus; timelockEndsAt: Date | null; executedAt: Date | null }> {
+    return this.governanceService.getProposalStatus(id);
+  }
+
+  @Post(':id/queue')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Queue a passed proposal (starts timelock)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, description: 'Proposal queued', type: ProposalResponseDto })
+  @ApiResponse({ status: 400, description: 'Proposal not in Passed state' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  queueProposal(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<ProposalResponseDto> {
+    return this.governanceService.queueProposal(id, user.id);
+  }
+
+  @Post(':id/execute')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Execute a queued proposal after timelock' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, description: 'Proposal executed', type: ProposalResponseDto })
+  @ApiResponse({ status: 400, description: 'Timelock not elapsed or wrong state' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  executeProposal(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<ProposalResponseDto> {
+    return this.governanceService.executeProposal(id, user.id);
+  }
+
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cancel a proposal (creator only)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, description: 'Proposal cancelled', type: ProposalResponseDto })
+  @ApiResponse({ status: 403, description: 'Not the proposal creator' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  cancelProposal(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<ProposalResponseDto> {
+    return this.governanceService.cancelProposal(id, user.id);
+  }
 }
+

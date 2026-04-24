@@ -9,9 +9,12 @@ import {
 import { Vote } from './vote.entity';
 
 export enum ProposalStatus {
+  PENDING = 'Pending',
   ACTIVE = 'Active',
   PASSED = 'Passed',
   FAILED = 'Failed',
+  QUEUED = 'Queued',
+  EXECUTED = 'Executed',
   CANCELLED = 'Cancelled',
 }
 
@@ -111,6 +114,14 @@ export class GovernanceProposal {
 
   @OneToMany(() => Vote, (vote) => vote.proposal)
   votes: Vote[];
+
+  /** Set when proposal is queued; execution is blocked until this time */
+  @Column({ type: 'timestamptz', nullable: true })
+  timelockEndsAt: Date | null;
+
+  /** Set when proposal is successfully executed */
+  @Column({ type: 'timestamptz', nullable: true })
+  executedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

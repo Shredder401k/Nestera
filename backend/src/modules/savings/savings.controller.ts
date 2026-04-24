@@ -12,6 +12,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
+
 import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 import {
   ApiTags,
@@ -44,6 +45,9 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RpcThrottleGuard } from '../../common/guards/rpc-throttle.guard';
 import { RecommendationService } from './services/recommendation.service';
+import { AutoDepositService } from './services/auto-deposit.service';
+import { CreateAutoDepositDto, AutoDepositResponseDto } from './dto/auto-deposit.dto';
+import { AutoDepositSchedule } from './entities/auto-deposit-schedule.entity';
 import {
   SavingsGoalProgress,
   UserSubscriptionWithLiveBalance,
@@ -55,6 +59,7 @@ export class SavingsController {
   constructor(
     private readonly savingsService: SavingsService,
     private readonly recommendationService: RecommendationService,
+    private readonly autoDepositService: AutoDepositService,
   ) {}
 
   @Get('products')
@@ -350,4 +355,66 @@ export class SavingsController {
   ): Promise<void> {
     return await this.savingsService.deleteGoal(id, user.id);
   }
+
+  // ── Auto-Deposit (#534) ────────────────────────────────────────────────────
+
+  @Post('auto-deposit/create')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a recurring auto-deposit schedule' })
+  @ApiBody({ type: CreateAutoDepositDto })
+  @ApiResponse({ status: 201, description: 'Schedule created', type: AutoDepositResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid schedule data' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async createAutoDeposit(
+    @Body() dto: CreateAutoDepositDto,
+    @CurrentUser() user: { id: string; email: string },
+  ): Promise<AutoDepositSchedule> {
+    return this.autoDepositService.create(user.id, dto);
+  }
+
+  @Get('auto-deposit')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all auto-deposit schedules for the current user' })
+  @ApiResponse({ status: 200, description: 'List of schedules', type: [AutoDepositResponseDto] })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getAutoDeposits(
+    @CurrentUser() user: { id: string; email: string },
+  ): Promise<AutoDepositSchedule[]> {
+    return this.autoDepositService.findAllForUser(user.id);
+  }
+
+  @Patch('auto-deposit/:id/pause')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Pause an auto-deposit schedule' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Schedule paused', type: AutoDepositResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Schedule not found' })
+  async pauseAutoDeposit(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; email: string },
+  ): Promise<AutoDepositSchedule> {
+    return this.autoDepositService.pause(id, user.id);
+  }
+
+  @Delete('auto-deposit/:id')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cancel an auto-deposit schedule' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Schedule cancelled' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Schedule not found' })
+  async cancelAutoDeposit(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; email: string },
+  ): Promise<void> {
+    return this.autoDepositService.cancel(id, user.id);
+  }
 }
+
