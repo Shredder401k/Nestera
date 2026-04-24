@@ -9,8 +9,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cache } from 'cache-manager';
-import { Repository } from 'typeorm';
-import { SavingsProduct } from './entities/savings-product.entity';
+import { In, Repository } from 'typeorm';
+import { SavingsProduct, SavingsProductType } from './entities/savings-product.entity';
 import {
   UserSubscription,
   SubscriptionStatus,
@@ -19,9 +19,15 @@ import { SavingsGoal, SavingsGoalStatus } from './entities/savings-goal.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { GoalProgressDto } from './dto/goal-progress.dto';
+import {
+  ProductComparisonResponseDto,
+  ProductComparisonItemDto,
+  HistoricalPerformanceDto,
+} from './dto/product-comparison.dto';
 import { User } from '../user/entities/user.entity';
 import { SavingsService as BlockchainSavingsService } from '../blockchain/savings.service';
 import { PredictiveEvaluatorService } from './services/predictive-evaluator.service';
+import { MilestoneService } from './services/milestone.service';
 
 export type SavingsGoalProgress = GoalProgressDto;
 
@@ -35,6 +41,31 @@ export interface UserSubscriptionWithLiveBalance extends UserSubscription {
 
 const STROOPS_PER_XLM = 10_000_000;
 const POOLS_CACHE_KEY = 'pools_all';
+const COMPARE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Derive a risk level from the product type.
+ * FIXED products are lower risk; FLEXIBLE products carry medium risk.
+ */
+function deriveRiskLevel(type: SavingsProductType): 'low' | 'medium' | 'high' {
+  return type === SavingsProductType.FIXED ? 'low' : 'medium';
+}
+
+/**
+ * Generate synthetic historical performance data based on the product's
+ * current APY. In a production system this would be fetched from a
+ * dedicated time-series store.
+ */
+function buildHistoricalPerformance(
+  apy: number,
+): HistoricalPerformanceDto[] {
+  const currentYear = new Date().getFullYear();
+  return [currentYear - 2, currentYear - 1].map((year, idx) => ({
+    year,
+    // Slight variance: -1% for two years ago, -0.5% for last year
+    return: Math.max(0, Math.round((apy - (1 - idx * 0.5)) * 100) / 100),
+  }));
+}
 
 @Injectable()
 export class SavingsService {
@@ -51,6 +82,7 @@ export class SavingsService {
     private readonly userRepository: Repository<User>,
     private readonly blockchainSavingsService: BlockchainSavingsService,
     private readonly predictiveEvaluatorService: PredictiveEvaluatorService,
+    private readonly milestoneService: MilestoneService,
     private readonly configService: ConfigService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
@@ -106,6 +138,59 @@ export class SavingsService {
       throw new NotFoundException(`Savings product ${id} not found`);
     }
     return product;
+  }
+
+  /**
+   * #533 / #593 — Compare up to 5 savings products side-by-side.
+   * Results are cached per unique sorted product-ID set for 10 minutes.
+   */
+  async compareProducts(
+    productIds: string[],
+    amount?: number,
+    duration?: number,
+  ): Promise<ProductComparisonResponseDto> {
+    const cacheKey = `compare:${[...productIds].sort().join(',')}:${amount ?? ''}:${duration ?? ''}`;
+
+    const cached =
+      await this.cacheManager.get<ProductComparisonResponseDto>(cacheKey);
+    if (cached) {
+      return { ...cached, cached: true };
+    }
+
+    const products = await this.productRepository.find({
+      where: { id: In(productIds) },
+    });
+
+    if (products.length !== productIds.length) {
+      const foundIds = new Set(products.map((p) => p.id));
+      const missing = productIds.filter((id) => !foundIds.has(id));
+      throw new NotFoundException(
+        `Savings products not found: ${missing.join(', ')}`,
+      );
+    }
+
+    const items: ProductComparisonItemDto[] = products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      type: product.type,
+      description: product.description,
+      apy: Number(product.interestRate),
+      tenure: product.tenureMonths,
+      riskLevel: deriveRiskLevel(product.type),
+      minAmount: Number(product.minAmount),
+      maxAmount: Number(product.maxAmount),
+      isActive: product.isActive,
+      contractId: product.contractId,
+      historicalPerformance: buildHistoricalPerformance(
+        Number(product.interestRate),
+      ),
+    }));
+
+    const response: ProductComparisonResponseDto = { products: items, cached: false };
+
+    await this.cacheManager.set(cacheKey, response, COMPARE_CACHE_TTL_MS);
+
+    return response;
   }
 
   async findProductWithLiveData(id: string): Promise<{
@@ -276,9 +361,26 @@ export class SavingsService {
     // Calculate average yield rate from active subscriptions
     const averageYieldRate = this.calculateAverageYieldRate(subscriptions);
 
-    return goals.map((goal) =>
+    const progressList = goals.map((goal) =>
       this.mapGoalWithProgress(goal, liveVaultBalanceStroops, averageYieldRate),
     );
+
+    // Detect and persist newly achieved milestones (fire-and-forget, non-blocking)
+    for (const progress of progressList) {
+      this.milestoneService
+        .detectAndAchieveMilestones(
+          progress.id,
+          progress.userId,
+          progress.percentageComplete,
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `Milestone detection failed for goal ${progress.id}: ${(err as Error).message}`,
+          ),
+        );
+    }
+
+    return progressList;
   }
 
   async createGoal(
@@ -308,7 +410,12 @@ export class SavingsService {
       status: SavingsGoalStatus.IN_PROGRESS,
     });
 
-    return await this.goalRepository.save(goal);
+    const saved = await this.goalRepository.save(goal);
+
+    // Initialize automatic milestone checkpoints (25/50/75/100%)
+    await this.milestoneService.initializeAutomaticMilestones(saved.id, userId);
+
+    return saved;
   }
 
   async updateGoal(

@@ -23,6 +23,16 @@ export interface ClaimUpdatedEvent {
   timestamp: Date;
 }
 
+export interface MilestoneAchievedEvent {
+  userId: string;
+  goalId: string;
+  milestoneId: string;
+  percentage: number;
+  label: string;
+  bonusPoints: number;
+  achievedAt: Date;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -88,6 +98,41 @@ export class NotificationsService {
     } catch (error) {
       this.logger.error(
         `Error processing sweep.completed event for user ${event.userId}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Listen to milestone.achieved event and create in-app notification
+   */
+  @OnEvent('milestone.achieved')
+  async handleMilestoneAchieved(event: MilestoneAchievedEvent): Promise<void> {
+    this.logger.log(
+      `Processing milestone.achieved event for user ${event.userId}, goal ${event.goalId}`,
+    );
+
+    try {
+      const preferences = await this.getOrCreatePreferences(event.userId);
+
+      if (preferences.inAppNotifications) {
+        await this.createNotification({
+          userId: event.userId,
+          type: NotificationType.MILESTONE_ACHIEVED,
+          title: `Milestone Reached: ${event.percentage}%`,
+          message: `${event.label}${event.bonusPoints > 0 ? ` You earned ${event.bonusPoints} bonus points!` : ''}`,
+          metadata: {
+            goalId: event.goalId,
+            milestoneId: event.milestoneId,
+            percentage: event.percentage,
+            bonusPoints: event.bonusPoints,
+            achievedAt: event.achievedAt,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error processing milestone.achieved event for user ${event.userId}`,
         error,
       );
     }

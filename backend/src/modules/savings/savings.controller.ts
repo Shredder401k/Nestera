@@ -22,13 +22,18 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { SavingsService } from './savings.service';
+import { MilestoneService } from './services/milestone.service';
 import { SavingsProduct } from './entities/savings-product.entity';
 import { UserSubscription } from './entities/user-subscription.entity';
 import { SavingsGoal } from './entities/savings-goal.entity';
+import { SavingsGoalMilestone } from './entities/savings-goal-milestone.entity';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { ProductDetailsDto } from './dto/product-details.dto';
+import { CompareProductsDto } from './dto/compare-products.dto';
+import { ProductComparisonResponseDto } from './dto/product-comparison.dto';
+import { CreateCustomMilestoneDto, MilestoneResponseDto } from './dto/milestone.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RpcThrottleGuard } from '../../common/guards/rpc-throttle.guard';
@@ -40,7 +45,10 @@ import {
 @ApiTags('savings')
 @Controller('savings')
 export class SavingsController {
-  constructor(private readonly savingsService: SavingsService) {}
+  constructor(
+    private readonly savingsService: SavingsService,
+    private readonly milestoneService: MilestoneService,
+  ) {}
 
   @Get('products')
   @UseInterceptors(CacheInterceptor)
@@ -102,6 +110,27 @@ export class SavingsController {
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
     };
+  }
+
+  @Post('products/compare')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Compare multiple savings products side-by-side',
+    description:
+      'Submit 2–5 product IDs to receive a structured comparison including APY, tenure, risk level, fees, and historical performance. Results are cached for 10 minutes.',
+  })
+  @ApiBody({ type: CompareProductsDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Comparison result',
+    type: ProductComparisonResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request (< 2 or > 5 IDs)' })
+  @ApiResponse({ status: 404, description: 'One or more products not found' })
+  async compareProducts(
+    @Body() dto: CompareProductsDto,
+  ): Promise<ProductComparisonResponseDto> {
+    return this.savingsService.compareProducts(dto.productIds);
   }
 
   @Post('subscribe')
@@ -243,5 +272,54 @@ export class SavingsController {
     @CurrentUser() user: { id: string; email: string },
   ): Promise<void> {
     return await this.savingsService.deleteGoal(id, user.id);
+  }
+
+  // ── Milestone endpoints (#532) ───────────────────────────────────────────────
+
+  @Get('goals/:id/milestones')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get milestone history for a savings goal' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid', description: 'Goal UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of milestones ordered by percentage',
+    type: [MilestoneResponseDto],
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Goal not found' })
+  async getMilestones(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; email: string },
+  ): Promise<SavingsGoalMilestone[]> {
+    return this.milestoneService.getMilestones(id, user.id);
+  }
+
+  @Post('goals/:id/milestones/custom')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a custom milestone to a savings goal' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid', description: 'Goal UUID' })
+  @ApiBody({ type: CreateCustomMilestoneDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Custom milestone created',
+    type: MilestoneResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Milestone at this percentage already exists' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Goal not found' })
+  async addCustomMilestone(
+    @Param('id') id: string,
+    @Body() dto: CreateCustomMilestoneDto,
+    @CurrentUser() user: { id: string; email: string },
+  ): Promise<SavingsGoalMilestone> {
+    return this.milestoneService.addCustomMilestone(
+      id,
+      user.id,
+      dto.percentage,
+      dto.label,
+    );
   }
 }
